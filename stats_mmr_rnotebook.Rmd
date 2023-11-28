@@ -16,8 +16,8 @@ library("MVA")
 
 Combining two sets of data
 ```{r}
-world_dev_ind <- read.csv("/Users/sinclaireschuetze/Desktop/Oxford/Applied Analytical Statistics/world_development_ind.csv")
-health_ind <- read.csv("/Users/sinclaireschuetze/Desktop/Oxford/Applied Analytical Statistics/health_ind.csv")
+world_dev_ind <- read.csv("world_development_ind.csv")
+health_ind <- read.csv("health_ind.csv")
 final_df <- merge(world_dev_ind,health_ind,by= "Country.Name") 
 ```
 
