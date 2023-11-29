@@ -21,18 +21,20 @@ health_ind <- read.csv("health_ind.csv")
 merged_df <- merge(world_dev_ind,health_ind,by= "Country.Name") 
 ```
 
+Add region categorical variable
 ```{r}
 library(countrycode)
-library(fastDummies)
 countries <- c(merged_df$Country.Name)
 merged_df$region <- countrycode(sourcevar = countries,
                             origin = "country.name",
                             destination = "region")
 ```
-Remove rows that have more than 50% missing data and columns that have more than 40% missing data.
+
+Remove rows that have more than 50% missing data and columns that have more than 50% missing data.
 ```{r}
 complete_rows_df <- merged_df[rowSums(is.na(merged_df)) < ncol(merged_df)/2, ]
-complete_columns_df <- complete_rows_df[, which(colMeans(!is.na(complete_rows_df)) > 0.6)]
+skilled_health_staff <- complete_rows_df$skilled_health_staff
+complete_columns_df <- complete_rows_df[, which(colMeans(!is.na(complete_rows_df)) > 0.5)]
 final_df = subset(complete_columns_df, select = -c(Country.Name) )
 ```
 
@@ -43,139 +45,109 @@ no_missing <- non_categorical[complete.cases(non_categorical), ]
 res <- cor(no_missing)
 corrplot(res, type = "upper", order = "hclust", 
          tl.col = "black", tl.srt = 45)
-```
-Remove control variables to check for multicollinearity in independent variables
-```{r}
-no_controls = subset(final_df, select = -c(region))
-lm <- lm(mmr~., data = no_controls)
-vif(lm, threshold = 10)
+
+no_missing
 ```
 ```{r}
-#remove log_perf_ind
-df_no_log_perf = subset(no_controls, select = -c(log_perf_ind))
-lm2 <- lm(mmr~., data = df_no_log_perf)
-vif(lm2, threshold = 10)
+lm(formula = mmr ~ ., data = final_df)
+```
+
+Remove variables that present multicollinearity
+```{r}
+no_aliased_coef = subset(final_df, select = -c(prev_hiv_female,life_exp_birth))
+no_controls = subset(no_aliased_coef, select = -c(region))
+
+vif_fun <- function(df, keep_in) {
+             # df: the dataset of interest
+             # keep_in: the variables that should be kept in  
+             highest <- c()
+             while(TRUE) {
+                # the rnorm() below is arbitrary as the VIF should not 
+                # depend on it
+                vifs <- vif(lm(rnorm(nrow(df)) ~. , data = df))
+                adj_vifs <- vifs[-which(names(vifs) %in% keep_in)]
+                if (max(adj_vifs) < 10) {
+                     break
+                }
+               highest <- c(highest,names((which(adj_vifs == max(adj_vifs)))))
+               cat("\n")
+               cat("removed:", highest)
+               cat("\n")
+               df <- df[,-which(names(df) %in% highest)]
+
+              }
+            cat("\n")
+            cat("final variables: \n")
+            return(names(vifs))
+              }
+
+vif_fun(no_controls,keep_in = c("gdp","fertility_rate","skilled_health_staff","mmr"))
 ```
 
 ```{r}
-#remove goods_exports
-df_no_goods_exports = subset(df_no_log_perf, select = -c(goods_exports))
-lm3 <- lm(mmr~., data = df_no_goods_exports)
-vif(lm3, threshold = 10)
-```
-```{r}
-#remove goods_imports
-df_no_goods_imports = subset(df_no_goods_exports, select = -c(goods_imports))
-lm4 <- lm(mmr~., data = df_no_goods_imports)
-vif(lm4, threshold = 10)
+df_after_vif <- subset(no_aliased_coef, select = -c(female_pop, log_perf_ind, goods_imports, comp_qual_log, goods_exports, govt_eff, consump_exp, rule_of_law, track_trace_log, infra_qual, reg_qual, customs_eff, external_health_exp, crop_prod_ind))
+df_with_skilled_staff <- merge(df_after_vif, skilled_health_staff, by.x = 0, by.y = 0)
+df_with_skilled_staff <- subset(df_with_skilled_staff, select = -c(Row.names))
+
+names(df_with_skilled_staff)[names(df_with_skilled_staff) == "y"] <- "skilled_staff"
 ```
 
 ```{r}
-#remove govt_eff
-df_no_govt_eff = subset(df_no_goods_imports, select = -c(govt_eff))
-lm5 <- lm(mmr~., data = df_no_govt_eff)
-vif(lm5, threshold = 10)
+vis_miss(df_with_skilled_staff)
 ```
-```{r}
-#remove comp_qual_log
-df_no_comp_qual = subset(df_no_govt_eff, select = -c(comp_qual_log))
-lm6 <- lm(mmr~., data = df_no_comp_qual)
-vif(lm6, threshold = 10)
+Imputing missing data
+```{r include=FALSE}
+invisible(tempData <- mice(df_with_skilled_staff,m=5,maxit=50,meth='cart',seed=500))
+data_after_mice <- complete(tempData,1)
 ```
 
 ```{r}
-#remove infra_qual
-df_no_infra_qual = subset(df_no_comp_qual, select = -c(infra_qual))
-lm7 <- lm(mmr~., data = df_no_infra_qual)
-vif(lm7, threshold = 10)
+noncategorical <- subset(data_after_mice, select = -c(region))
+boxplot(noncategorical, use.cols = TRUE)
 ```
 ```{r}
-#remove life_exp_birth
-df_no_life_exp_birth = subset(df_no_infra_qual, select = -c(life_exp_birth))
-lm8 <- lm(mmr~., data = df_no_life_exp_birth)
-vif(lm8, threshold = 10)
-```
-```{r}
-#remove rule of law
-df_no_rule_of_law = subset(df_no_life_exp_birth, select = -c(rule_of_law))
-lm9 <- lm(mmr~., data = df_no_rule_of_law)
-vif(lm9, threshold = 10)
+outliers = boxplot(data_after_mice$export_val_ind, plot=FALSE)$out
+no_export_val_out <- data_after_mice[!(data_after_mice$export_val_ind %in% outliers),]
+
+no_export_val_out$credit_bureau_transform <- sign(no_export_val_out$credit_bureau_covg)*abs(no_export_val_out$credit_bureau_covg)^(1/3)
+no_credit_bureau = subset(no_export_val_out, select = -c(credit_bureau_covg))
 ```
 
 ```{r}
-#remove track_trace_log
-df_no_track_trace_log = subset(df_no_rule_of_law, select = -c(track_trace_log))
-lm10 <- lm(mmr~., data = df_no_track_trace_log)
-vif(lm10, threshold = 10)
-```
+skewness <- function(v){
+  answer <- 3 * (mean(v) - median(v)) / sd(v)
+  return(answer)
+}
 
-```{r}
-#remove ext_bal
-df_no_ext_bal = subset(df_no_track_trace_log, select = -c(external_bal_goods))
-lm11 <- lm(mmr~., data = df_no_ext_bal)
-vif(lm11, threshold = 10)
-```
-```{r}
-#remove reg_qual
-df_no_reg_qual = subset(df_no_ext_bal, select = -c(reg_qual))
-lm12 <- lm(mmr~., data = df_no_reg_qual)
-vif(lm12, threshold = 10)
-```
-```{r}
-#remove customs_eff
-df_no_customs_eff = subset(df_no_reg_qual, select = -c(customs_eff))
-lm13 <- lm(mmr~., data = df_no_customs_eff)
-vif(lm13, threshold = 10)
-```
+noncategorical <- subset(no_credit_bureau, select = -c(region))
+remove_cols <- c()
+for(i in 1:ncol(noncategorical)) {       # for-loop over columns
+  skew_val <- skewness(noncategorical[,i])
+  if(skew_val >= 1 | skew_val <= -1){
+    col_name <- colnames(noncategorical)[i]
+    print(col_name)
+    new_col_name <- paste(col_name, "transform",sep = "_")
+    noncategorical[new_col_name] <- log(noncategorical[[col_name]])
+    remove_cols <- append(remove_cols,i)
+  }
+}
 
-```{r}
-df_indep_var <- df_no_customs_eff
-df_final <- merge(df_indep_var,categorical,by.x = 0, by.y = 0) 
-df_final = subset(df_final, select = -c(Country.Name, Row.names) )
+noncategorical <- noncategorical[ -remove_cols ]
+noncategorical$gdp_transform <- log(noncategorical$gdp)
+remove_non_log = subset(noncategorical, select = -c(gdp))
 ```
-
-```{r}
-lm <- lm(mmr~., data = df_final)
-summary(lm)
-```
-
-```{r}
-vis_miss(df)
-```
-```{r}
-invisible(tempData <- mice(df,m=5,maxit=50,meth='cart',seed=500))
-completedData <- complete(tempData,1)
-```
-```{r}
-lm <- lm(mmr~., data = completedData)
-summary(lm)
-```
-
 
 Getting rid of outliers
 ```{r}
-boxplot(completedData$export_val_ind)
-outliers = boxplot(completedData$export_val_ind, plot=FALSE)$out
-completedData <- completedData[!(completedData$export_val_ind %in% outliers),]
-
-outliers = boxplot(completedData$export_good_services, plot=FALSE)$out
-completedData <- completedData[!(completedData$export_good_services %in% outliers),]
-
-boxplot(completedData, use.cols = TRUE)
-```
-Log transforming variables
-```{r}
-completedData$mmr_transform <- log(completedData$mmr)
-completedData$gdp_transform <- log(completedData$gdp)
-completedData$imports_transform <- log(completedData$goods_imports)
-completedData$female_pop_transform <- log(completedData$female_pop)
-completedData$external_health_exp_transform <- (completedData$external_health_exp)^(1/3)
-completedData = subset(completedData, select = -c(mmr, external_health_exp, female_pop, goods_imports, gdp))
+boxplot(remove_non_log, use.cols = TRUE, las=2)
 ```
 
 ```{r}
-lm <- lm(mmr_transform~., data = completedData)
+lm <- lm(mmr_transform~., data = remove_non_log)
 summary(lm)
+```
+```{r}
+boxplot(subset(completedData, select = -c(region)), use.cols = TRUE)
 ```
 
 
