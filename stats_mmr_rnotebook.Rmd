@@ -18,28 +18,35 @@ Combining two sets of data
 ```{r}
 world_dev_ind <- read.csv("world_development_ind.csv")
 health_ind <- read.csv("health_ind.csv")
-final_df <- merge(world_dev_ind,health_ind,by= "Country.Name") 
+merged_df <- merge(world_dev_ind,health_ind,by= "Country.Name") 
 ```
 
+```{r}
+library(countrycode)
+library(fastDummies)
+countries <- c(merged_df$Country.Name)
+merged_df$region <- countrycode(sourcevar = countries,
+                            origin = "country.name",
+                            destination = "region")
+```
 Remove rows that have more than 50% missing data and columns that have more than 40% missing data.
 ```{r}
-final_df <- final_df[rowSums(is.na(final_df)) < ncol(final_df)/2, ]
-final_df <- final_df[, which(colMeans(!is.na(final_df)) > 0.6)]
-controls = subset(final_df, select = c(Country.Name, fertility_rate, life_exp_birth, prev_hiv_female,female_tobacco_use,preg_anemia_prev,female_pop,gdp) )
-final_df = subset(final_df, select = -c(Country.Name) )
-
-final_df
+complete_rows_df <- merged_df[rowSums(is.na(merged_df)) < ncol(merged_df)/2, ]
+complete_columns_df <- complete_rows_df[, which(colMeans(!is.na(complete_rows_df)) > 0.6)]
+final_df = subset(complete_columns_df, select = -c(Country.Name) )
 ```
 
 ```{r}
-no_missing <- final_df[complete.cases(final_df), ]
+categorical <- subset(final_df, select = c(region))
+non_categorical <- subset(final_df, select = -c(region))
+no_missing <- non_categorical[complete.cases(non_categorical), ]
 res <- cor(no_missing)
 corrplot(res, type = "upper", order = "hclust", 
          tl.col = "black", tl.srt = 45)
 ```
 Remove control variables to check for multicollinearity in independent variables
 ```{r}
-no_controls = subset(final_df, select = -c(fertility_rate, life_exp_birth, prev_hiv_female,female_tobacco_use,preg_anemia_prev,female_pop,gdp) )
+no_controls = subset(final_df, select = -c(region))
 lm <- lm(mmr~., data = no_controls)
 vif(lm, threshold = 10)
 ```
@@ -57,79 +64,78 @@ lm3 <- lm(mmr~., data = df_no_goods_exports)
 vif(lm3, threshold = 10)
 ```
 ```{r}
-#remove infra_qual
-df_no_infra_qual = subset(df_no_goods_exports, select = -c(infra_qual))
-lm4 <- lm(mmr~., data = df_no_infra_qual)
+#remove goods_imports
+df_no_goods_imports = subset(df_no_goods_exports, select = -c(goods_imports))
+lm4 <- lm(mmr~., data = df_no_goods_imports)
 vif(lm4, threshold = 10)
 ```
+
 ```{r}
 #remove govt_eff
-df_no_govt_eff = subset(df_no_infra_qual, select = -c(govt_eff))
+df_no_govt_eff = subset(df_no_goods_imports, select = -c(govt_eff))
 lm5 <- lm(mmr~., data = df_no_govt_eff)
 vif(lm5, threshold = 10)
 ```
 ```{r}
-#remove track_trace_log
-df_no_track_trace_log = subset(df_no_govt_eff, select = -c(track_trace_log))
-lm6 <- lm(mmr~., data = df_no_track_trace_log)
+#remove comp_qual_log
+df_no_comp_qual = subset(df_no_govt_eff, select = -c(comp_qual_log))
+lm6 <- lm(mmr~., data = df_no_comp_qual)
 vif(lm6, threshold = 10)
 ```
+
 ```{r}
-#remove rule of law
-df_no_rule_of_law = subset(df_no_track_trace_log, select = -c(rule_of_law))
-lm7 <- lm(mmr~., data = df_no_rule_of_law)
+#remove infra_qual
+df_no_infra_qual = subset(df_no_comp_qual, select = -c(infra_qual))
+lm7 <- lm(mmr~., data = df_no_infra_qual)
 vif(lm7, threshold = 10)
 ```
 ```{r}
-#remove comp_qual_log
-df_no_comp_qual = subset(df_no_rule_of_law, select = -c(comp_qual_log))
-lm8 <- lm(mmr~., data = df_no_comp_qual)
+#remove life_exp_birth
+df_no_life_exp_birth = subset(df_no_infra_qual, select = -c(life_exp_birth))
+lm8 <- lm(mmr~., data = df_no_life_exp_birth)
 vif(lm8, threshold = 10)
 ```
 ```{r}
-#remove ext_bal
-df_no_ext_bal = subset(df_no_comp_qual, select = -c(external_bal_goods))
-lm9 <- lm(mmr~., data = df_no_ext_bal)
+#remove rule of law
+df_no_rule_of_law = subset(df_no_life_exp_birth, select = -c(rule_of_law))
+lm9 <- lm(mmr~., data = df_no_rule_of_law)
 vif(lm9, threshold = 10)
 ```
 
 ```{r}
-#remove corr_control
-df_no_corr_control = subset(df_no_ext_bal, select = -c(corr_control))
-lm10 <- lm(mmr~., data = df_no_corr_control)
+#remove track_trace_log
+df_no_track_trace_log = subset(df_no_rule_of_law, select = -c(track_trace_log))
+lm10 <- lm(mmr~., data = df_no_track_trace_log)
 vif(lm10, threshold = 10)
+```
+
+```{r}
+#remove ext_bal
+df_no_ext_bal = subset(df_no_track_trace_log, select = -c(external_bal_goods))
+lm11 <- lm(mmr~., data = df_no_ext_bal)
+vif(lm11, threshold = 10)
+```
+```{r}
+#remove reg_qual
+df_no_reg_qual = subset(df_no_ext_bal, select = -c(reg_qual))
+lm12 <- lm(mmr~., data = df_no_reg_qual)
+vif(lm12, threshold = 10)
 ```
 ```{r}
 #remove customs_eff
-df_no_customs_eff = subset(df_no_corr_control, select = -c(customs_eff))
-lm11 <- lm(mmr~., data = df_no_customs_eff)
-vif(lm11, threshold = 10)
+df_no_customs_eff = subset(df_no_reg_qual, select = -c(customs_eff))
+lm13 <- lm(mmr~., data = df_no_customs_eff)
+vif(lm13, threshold = 10)
 ```
 
 ```{r}
 df_indep_var <- df_no_customs_eff
-df_final <- merge(df_indep_var,controls,by.x = 0, by.y = 0) 
+df_final <- merge(df_indep_var,categorical,by.x = 0, by.y = 0) 
 df_final = subset(df_final, select = -c(Country.Name, Row.names) )
 ```
 
 ```{r}
-cor(no_missing$mmr, no_missing$gdp)
-cor(no_missing$mmr, no_missing$fertility_rate)
-cor(no_missing$mmr, no_missing$life_exp_birth)
-cor(no_missing$mmr, no_missing$prev_hiv_female)
-cor(no_missing$mmr, no_missing$female_tobacco_use)
-cor(no_missing$mmr, no_missing$preg_anemia_prev)
-cor(no_missing$mmr, no_missing$female_pop)
-
-df = subset(df_final, select = -c(fertility_rate, life_exp_birth, prev_hiv_female, preg_anemia_prev))
-
-no_missing <- df[complete.cases(df), ]
-res <- cor(no_missing)
-corrplot(res, type = "upper", order = "hclust", 
-         tl.col = "black", tl.srt = 45)
-```
-```{r}
-lm <- lm(mmr~., data = df)
+lm <- lm(mmr~., data = df_final)
 summary(lm)
 ```
 
