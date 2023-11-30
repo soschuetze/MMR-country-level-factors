@@ -34,8 +34,8 @@ Remove rows that have more than 50% missing data and columns that have more than
 ```{r}
 complete_rows_df <- merged_df[rowSums(is.na(merged_df)) < ncol(merged_df)/2, ]
 skilled_health_staff <- complete_rows_df$skilled_health_staff
-complete_columns_df <- complete_rows_df[, which(colMeans(!is.na(complete_rows_df)) > 0.5)]
-final_df = subset(complete_columns_df, select = -c(Country.Name) )
+final_df <- complete_rows_df[, which(colMeans(!is.na(complete_rows_df)) > 0.5)]
+final_df = subset(final_df, select = -c(Country.Name) )
 ```
 
 ```{r}
@@ -103,51 +103,65 @@ data_after_mice <- complete(tempData,1)
 
 ```{r}
 noncategorical <- subset(data_after_mice, select = -c(region))
-boxplot(noncategorical, use.cols = TRUE)
+boxplot(noncategorical, use.cols = TRUE, las=2)
 ```
+Remove export_val_ind outliers
 ```{r}
-outliers = boxplot(data_after_mice$export_val_ind, plot=FALSE)$out
-no_export_val_out <- data_after_mice[!(data_after_mice$export_val_ind %in% outliers),]
-
-no_export_val_out$credit_bureau_transform <- sign(no_export_val_out$credit_bureau_covg)*abs(no_export_val_out$credit_bureau_covg)^(1/3)
-no_credit_bureau = subset(no_export_val_out, select = -c(credit_bureau_covg))
-```
-
-```{r}
-skewness <- function(v){
-  answer <- 3 * (mean(v) - median(v)) / sd(v)
-  return(answer)
-}
-
-noncategorical <- subset(no_credit_bureau, select = -c(region))
-remove_cols <- c()
-for(i in 1:ncol(noncategorical)) {       # for-loop over columns
-  skew_val <- skewness(noncategorical[,i])
-  if(skew_val >= 1 | skew_val <= -1){
-    col_name <- colnames(noncategorical)[i]
-    print(col_name)
-    new_col_name <- paste(col_name, "transform",sep = "_")
-    noncategorical[new_col_name] <- log(noncategorical[[col_name]])
-    remove_cols <- append(remove_cols,i)
-  }
-}
-
-noncategorical <- noncategorical[ -remove_cols ]
-noncategorical$gdp_transform <- log(noncategorical$gdp)
-remove_non_log = subset(noncategorical, select = -c(gdp))
-```
-
-Getting rid of outliers
-```{r}
-boxplot(remove_non_log, use.cols = TRUE, las=2)
+data_after_mice$gdp_transform <- log(data_after_mice$gdp)
+data_after_mice$fertility_rate_transform <- log(data_after_mice$fertility_rate)
+data_after_mice$mmr_transform <- log(data_after_mice$mmr)
+df_transform <- subset(data_after_mice, select = -c(gdp, fertility_rate, mmr))
 ```
 
 ```{r}
-lm <- lm(mmr_transform~., data = remove_non_log)
+boxplot(subset(df_transform, select = -c(region)), use.cols = TRUE, las=2)
+```
+
+```{r}
+outliers = boxplot(df_transform$export_val_ind, plot=FALSE)$out
+no_export_val_out <- df_transform[!(df_transform$export_val_ind %in% outliers),]
+```
+
+```{r}
+boxplot(subset(no_export_val_out, select = -c(region)), use.cols = TRUE, las=2)
+```
+
+```{r}
+lm <- lm(mmr_transform~gdp_transform + fertility_rate_transform + skilled_staff + region, data = no_export_val_out)
 summary(lm)
 ```
+
+
 ```{r}
-boxplot(subset(completedData, select = -c(region)), use.cols = TRUE)
+par(mfrow = c(2, 2))
+plot(lm)
 ```
 
+```{r}
+outliers_remove <- no_export_val_out[-c(39,71,18),]
+lm_no_outliers <- lm(mmr_transform~gdp_transform + fertility_rate_transform + skilled_staff + region, data = outliers_remove)
+summary(lm_no_outliers)
+par(mfrow = c(2, 2))
+plot(lm_no_outliers)
+```
+```{r}
+#AIC stepwise regression
+fullModelAIC <- lm(mmr_transform~.,data = outliers_remove)
+step(fullModelAIC, direction = "both",k=2, trace = 0)
+```
+
+```{r}
+#BIC stepwise regression
+fullModelBIC <- lm(mmr_transform~.,data = outliers_remove)
+step(fullModelBIC, direction = "both",k=log(length(outliers_remove$mmr_transform)), trace = 0)
+```
+AIC and BIC models
+```{r}
+AIC_model <- lm(mmr_transform ~ ship_freq + political_stability + corr_control + fem_prim_teachers+ out_of_pocket_health_exp + women_hiv + region + fertility_rate_transform, data = outliers_remove)
+
+BIC_model <-  lm(mmr_transform ~ ship_freq + political_stability + fem_prim_teachers + women_hiv + region, data = outliers_remove)
+
+summary(AIC_model)
+summary(BIC_model)
+```
 
