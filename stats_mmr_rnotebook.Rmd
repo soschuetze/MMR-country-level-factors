@@ -16,46 +16,47 @@ library("MVA")
 
 Combining two sets of data
 ```{r}
-world_dev_ind <- read.csv("world_development_ind.csv")
-health_ind <- read.csv("health_ind.csv")
-merged_df <- merge(world_dev_ind,health_ind,by= "Country.Name") 
+data <- read.csv("final_data.csv")
+data
 ```
 
 Add region categorical variable
 ```{r}
 library(countrycode)
-countries <- c(merged_df$Country.Name)
-merged_df$region <- countrycode(sourcevar = countries,
+countries <- c(data$Country.Name)
+data$region <- countrycode(sourcevar = countries,
                             origin = "country.name",
                             destination = "region")
 ```
 
-Remove rows that have more than 50% missing data and columns that have more than 50% missing data.
+Remove rows that have more than 50% missing data.
 ```{r}
-complete_rows_df <- merged_df[rowSums(is.na(merged_df)) < ncol(merged_df)/2, ]
-skilled_health_staff <- complete_rows_df$skilled_health_staff
-final_df <- complete_rows_df[, which(colMeans(!is.na(complete_rows_df)) > 0.5)]
-final_df = subset(final_df, select = -c(Country.Name) )
+complete_rows_df <- data[rowSums(is.na(data)) < ncol(data)/2, ]
+final_df = subset(complete_rows_df, select = -c(Country.Name, Time.Code, Country.Code, Time) )
+final_df
 ```
 
 ```{r}
-categorical <- subset(final_df, select = c(region))
-non_categorical <- subset(final_df, select = -c(region))
-no_missing <- non_categorical[complete.cases(non_categorical), ]
-res <- cor(no_missing)
+vis_miss(final_df)
+```
+
+Imputing missing data
+```{r include=FALSE}
+invisible(tempData <- mice(final_df,m=5,maxit=50,meth='cart',seed=500))
+data_after_mice <- complete(tempData,1)
+```
+
+
+```{r}
+categorical <- subset(data_after_mice, select = c(region))
+non_categorical <- subset(data_after_mice, select = -c(region))
+res <- cor(non_categorical)
 corrplot(res, type = "upper", order = "hclust", 
          tl.col = "black", tl.srt = 45)
-
-no_missing
 ```
-```{r}
-lm(formula = mmr ~ ., data = final_df)
-```
-
 Remove variables that present multicollinearity
 ```{r}
-no_aliased_coef = subset(final_df, select = -c(prev_hiv_female,life_exp_birth))
-no_controls = subset(no_aliased_coef, select = -c(region))
+no_controls = subset(data_after_mice, select = -c(region))
 
 vif_fun <- function(df, keep_in) {
              # df: the dataset of interest
@@ -85,83 +86,73 @@ vif_fun(no_controls,keep_in = c("gdp","fertility_rate","skilled_health_staff","m
 ```
 
 ```{r}
-df_after_vif <- subset(no_aliased_coef, select = -c(female_pop, log_perf_ind, goods_imports, comp_qual_log, goods_exports, govt_eff, consump_exp, rule_of_law, track_trace_log, infra_qual, reg_qual, customs_eff, external_health_exp, crop_prod_ind))
-df_with_skilled_staff <- merge(df_after_vif, skilled_health_staff, by.x = 0, by.y = 0)
-df_with_skilled_staff <- subset(df_with_skilled_staff, select = -c(Row.names))
-
-names(df_with_skilled_staff)[names(df_with_skilled_staff) == "y"] <- "skilled_staff"
-```
-
-```{r}
-vis_miss(df_with_skilled_staff)
-```
-Imputing missing data
-```{r include=FALSE}
-invisible(tempData <- mice(df_with_skilled_staff,m=5,maxit=50,meth='cart',seed=500))
-data_after_mice <- complete(tempData,1)
-```
-
-```{r}
-noncategorical <- subset(data_after_mice, select = -c(region))
+no_private_health_var <- subset(data_after_mice, select = -c(private_health_exp_per_cap, private_health_exp_percent))
+noncategorical <- subset(no_private_health_var, select = -c(region))
 boxplot(noncategorical, use.cols = TRUE, las=2)
 ```
 Remove export_val_ind outliers
 ```{r}
-data_after_mice$gdp_transform <- log(data_after_mice$gdp)
-data_after_mice$fertility_rate_transform <- log(data_after_mice$fertility_rate)
-data_after_mice$mmr_transform <- log(data_after_mice$mmr)
-df_transform <- subset(data_after_mice, select = -c(gdp, fertility_rate, mmr))
+no_private_health_var$gdp_transform <- log(no_private_health_var$gdp)
+no_private_health_var$fertility_rate_transform <- log(no_private_health_var$fertility_rate)
+no_private_health_var$mmr_transform <- log(no_private_health_var$mmr)
+df_transform <- subset(no_private_health_var, select = -c(fertility_rate, mmr))
 ```
 
 ```{r}
 boxplot(subset(df_transform, select = -c(region)), use.cols = TRUE, las=2)
 ```
-
 ```{r}
-outliers = boxplot(df_transform$export_val_ind, plot=FALSE)$out
-no_export_val_out <- df_transform[!(df_transform$export_val_ind %in% outliers),]
+baseline <- lm(mmr_transform~ gdp_transform + skilled_health_staff + region + fertility_rate_transform, data = df_transform)
+summary(baseline)
 ```
 
 ```{r}
-boxplot(subset(no_export_val_out, select = -c(region)), use.cols = TRUE, las=2)
+lm_percent <- lm(mmr_transform~skilled_health_staff + gdp_transform + fertility_rate_transform + region + govt_health_exp_percent + oop_health_exp_percent, data = df_transform)
+summary(lm_percent)
 ```
-
-```{r}
-lm <- lm(mmr_transform~gdp_transform + fertility_rate_transform + skilled_staff + region, data = no_export_val_out)
-summary(lm)
-```
-
 
 ```{r}
 par(mfrow = c(2, 2))
 plot(lm)
 ```
-
 ```{r}
-outliers_remove <- no_export_val_out[-c(39,71,18),]
-lm_no_outliers <- lm(mmr_transform~gdp_transform + fertility_rate_transform + skilled_staff + region, data = outliers_remove)
-summary(lm_no_outliers)
-par(mfrow = c(2, 2))
-plot(lm_no_outliers)
-```
-```{r}
-#AIC stepwise regression
-fullModelAIC <- lm(mmr_transform~.,data = outliers_remove)
-step(fullModelAIC, direction = "both",k=2, trace = 0)
+lm_per_cap <- lm(mmr_transform~skilled_health_staff + gdp_transform + fertility_rate_transform + region + govt_health_exp_per_cap + oop_per_cap, data = df_transform)
+summary(lm_per_cap)
 ```
 
 ```{r}
-#BIC stepwise regression
-fullModelBIC <- lm(mmr_transform~.,data = outliers_remove)
-step(fullModelBIC, direction = "both",k=log(length(outliers_remove$mmr_transform)), trace = 0)
+anova(baseline, lm_percent)
 ```
-AIC and BIC models
 ```{r}
-AIC_model <- lm(mmr_transform ~ ship_freq + political_stability + corr_control + fem_prim_teachers+ out_of_pocket_health_exp + women_hiv + region + fertility_rate_transform, data = outliers_remove)
-
-BIC_model <-  lm(mmr_transform ~ ship_freq + political_stability + fem_prim_teachers + women_hiv + region, data = outliers_remove)
-
-summary(AIC_model)
-summary(BIC_model)
+anova(baseline, lm_per_cap)
 ```
 
+```{r}
+df_with_deciles <- df_transform
+df_with_deciles$gdp_decile <- ntile(df_transform$gdp, 10)
+df_with_deciles
+```
+
+```{r}
+lm_percent_decile <- lm(mmr_transform~skilled_health_staff + gdp_decile + fertility_rate_transform + region + govt_health_exp_percent + oop_health_exp_percent, data = df_with_deciles)
+summary(lm_percent_decile)
+```
+
+```{r}
+lm_per_cap_decile <- lm(mmr_transform~skilled_health_staff + gdp_decile + fertility_rate_transform + region + govt_health_exp_per_cap + oop_per_cap, data = df_with_deciles)
+summary(lm_per_cap_decile)
+```
+
+```{r}
+df_with_ratio <- df_with_deciles
+df_with_ratio$health_exp_ratio <- df_with_ratio$govt_health_exp_percent/df_with_ratio$oop_health_exp_percent
+```
+
+
+```{r}
+df_with_ratio
+```
+```{r}
+lm_ratio <- lm(mmr_transform~skilled_health_staff + gdp_decile + fertility_rate_transform + region + health_exp_ratio, data = df_with_ratio)
+summary(lm_ratio)
+```
