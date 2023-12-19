@@ -101,6 +101,13 @@ data_after_mice$female_pop_transform <- log(data_after_mice$female_pop)
 ```{r}
 boxplot(subset(data_after_mice, select = -c(region, GDP, fertility_rate, female_pop, MMR, Country.Name)), use.cols = TRUE, las=2)
 ```
+```{r}
+p <- ggplot(data=data_after_mice, aes(x=log(govt_health_exp), y=mmr_transform, color = region)) +
+  geom_point()+
+  geom_smooth(method=lm, se=F)
+
+p + scale_color_brewer(palette = "Paired") + xlab("Log of Government Health Expenditure") + ylab("Log of MMR")
+```
 
 ```{r}
 baseline <- lm(mmr_transform ~ region + govt_health_exp + private_health_exp, data = data_after_mice)
@@ -158,11 +165,8 @@ groups_with_controls <- lm(mmr_transform ~ govt_exp_by_group + fertility_rate_tr
 summary(groups_with_controls)
 ```
 
-```{r}
-europe_df <- subset(final_df, region %in% c("Europe & Central Asia"))
-```
 
 ```{r}
-europe_reg <- lm(mmr_transform ~ govt_exp_by_group + fertility_rate_transform + SAB + female_pop_transform + num_physicians, data = europe_df)
-summary(europe_reg)
+final_reg <- lm(mmr_transform ~ govt_health_exp + GDP + region + govt_exp_by_group + fertility_rate_transform + SAB + female_pop_transform + num_physicians, data = final_df)
+summary(final_reg)
 ```
