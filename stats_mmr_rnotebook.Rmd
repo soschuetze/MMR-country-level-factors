@@ -12,29 +12,52 @@ library(corrplot)
 library(mice)
 library(car)
 library("MVA")
+library(tidyverse)
+library(psych)
+library(naniar)
 
 options(scipen=999)
 ```
 
 Combining two sets of data
 ```{r}
-data <- read.csv("final_data.csv")
+data <- read.csv("data.csv")
+
 data
 ```
 
 Add region categorical variable
 ```{r}
 library(countrycode)
-countries <- c(data$Country.Name)
+countries <- c(data$country)
 data$region <- countrycode(sourcevar = countries,
                             origin = "country.name",
                             destination = "region")
 ```
 
+```{r}
+library(choroplethr)
+library(WDI) 
+
+choroplethr_wdi(code="SH.STA.MMRT", year=2018, title="2018 Maternal Mortality Ratio", num_colors=9)
+```
+```{r}
+choroplethr_wdi(code="SP.DYN.TFRT.IN", year=2018, title="2018 Total Fertility Rate", num_colors=9)
+
+```
+```{r}
+choroplethr_wdi(code="SH.XPD.PVTD.PC.CD", year=2018, title="2018 Private Health Expenditure", num_colors=1)
+```
+
+
 Remove rows that have more than 50% missing data.
 ```{r}
 final_df <- data[rowSums(is.na(data)) < ncol(data)/2, ]
 final_df
+```
+
+```{r}
+miss_var_summary(final_df)
 ```
 
 ```{r}
@@ -49,15 +72,15 @@ data_after_mice <- complete(tempData,1)
 
 
 ```{r}
-categorical <- subset(data_after_mice, select = c(region, Country.Name))
-non_categorical <- subset(data_after_mice, select = -c(region, Country.Name))
+categorical <- subset(data_after_mice, select = c(region, country, country_code))
+non_categorical <- subset(data_after_mice, select = -c(region, country, country_code))
 res <- cor(non_categorical)
 corrplot(res, type = "upper", order = "hclust", 
          tl.col = "black", tl.srt = 45)
 ```
 Remove variables that present multicollinearity
 ```{r}
-no_controls = subset(data_after_mice, select = -c(region, Country.Name))
+no_controls = subset(data_after_mice, select = -c(region, country, country_code))
 
 vif_fun <- function(df, keep_in) {
              # df: the dataset of interest
@@ -87,86 +110,199 @@ vif_fun(no_controls,keep_in = c("gdp","fertility_rate","skilled_health_staff","m
 ```
 
 ```{r}
-noncategorical <- subset(data_after_mice, select = -c(region, Country.Name))
+data_after_vif <- subset(data_after_mice, select = -c(total_health_exp, oop_health_exp))
+noncategorical <- subset(data_after_vif, select = -c(region, country, country_code))
 boxplot(noncategorical, use.cols = TRUE, las=2)
 ```
+
+```{r}
+for (i in 1:ncol(noncategorical)){
+  plot(noncategorical[,i], noncategorical$mmr,
+   xlab=colnames(noncategorical)[i], ylab="MMR", pch=19)
+}
+```
+
 Remove export_val_ind outliers
 ```{r}
-data_after_mice$gdp_transform <- log(data_after_mice$GDP)
+data_transformed <- data_after_mice
+
+data_transformed$gdp_transform <- log(data_after_mice$gdp)
+data_transformed$fertility_rate_transform <- log(data_after_mice$fertility_rate)
+data_transformed$mmr_transform <- log(data_after_mice$mmr)
+data_transformed$female_pop_transform <- log(data_after_mice$female_pop)
+data_transformed$govt_health_transform <- log(data_after_mice$govt_health_exp)
+data_transformed$gpd_pc_transform <- log(data_after_mice$gdp_per_capita)
+data_transformed$private_health_transform <- log(data_after_mice$private_health_exp)
+
+data_after_mice$gdp_transform <- log(data_after_mice$gdp)
 data_after_mice$fertility_rate_transform <- log(data_after_mice$fertility_rate)
-data_after_mice$mmr_transform <- log(data_after_mice$MMR)
+data_after_mice$mmr_transform <- log(data_after_mice$mmr)
 data_after_mice$female_pop_transform <- log(data_after_mice$female_pop)
+data_after_mice$govt_health_transform <- log(data_after_mice$govt_health_exp)
+data_after_mice$gpd_pc_transform <- log(data_after_mice$gdp_per_capita)
+data_after_mice$private_health_transform <- log(data_after_mice$private_health_exp)
+
+data_transformed <- subset(data_transformed, select = -c(female_pop, fertility_rate, mmr, gdp, govt_health_exp, gdp_per_capita, private_health_exp))
 ```
 
 ```{r}
-boxplot(subset(data_after_mice, select = -c(region, GDP, fertility_rate, female_pop, MMR, Country.Name)), use.cols = TRUE, las=2)
-```
-```{r}
-p <- ggplot(data=data_after_mice, aes(x=log(govt_health_exp), y=mmr_transform, color = region)) +
-  geom_point()+
-  geom_smooth(method=lm, se=F)
+transformed_noncat <- subset(data_transformed, select = -c(region, country, country_code))
 
-p + scale_color_brewer(palette = "Paired") + xlab("Log of Government Health Expenditure") + ylab("Log of MMR")
+for (i in 1:ncol(transformed_noncat)){
+  plot(transformed_noncat[,i], transformed_noncat$mmr,
+   xlab=colnames(transformed_noncat)[i], ylab="MMR", pch=19)
+}
 ```
 
 ```{r}
-baseline <- lm(mmr_transform ~ region + govt_health_exp + private_health_exp, data = data_after_mice)
+boxplot(transformed_noncat, use.cols = TRUE, las=2)
+```
+
+```{r}
+baseline <- lm(mmr_transform ~ govt_health_transform + private_health_transform, data = data_after_mice)
 summary(baseline)
 ```
 
 ```{r}
-baseline_contr_1 <- lm(mmr_transform ~ region + govt_health_exp + private_health_exp + gdp_transform + fertility_rate_transform + SAB, data = data_after_mice)
+baseline <- lm(mmr_transform ~ region + govt_health_transform + private_health_transform, data = data_after_mice)
+summary(baseline)
+```
+
+```{r}
+data_after_mice
+```
+
+```{r}
+baseline_contr_1 <- lm(mmr_transform ~ region + govt_health_transform + private_health_transform + gpd_pc_transform + gdp_transform + rule_of_law + comp_educ + female_pop_transform + fertility_rate_transform + sab, data = data_after_mice)
 summary(baseline_contr_1)
 ```
 
 ```{r}
-baseline_contr_2 <- lm(mmr_transform ~ region + govt_health_exp + private_health_exp + gdp_transform + fertility_rate_transform + SAB + female_pop_transform + num_physicians, data = data_after_mice)
+baseline_contr_2 <- lm(mmr_transform ~ region + govt_health_transform + private_health_transform + gdp_transform + fertility_rate_transform + sab, data = data_after_mice)
 summary(baseline_contr_2)
 ```
 ```{r}
-df_health_exp_decile <- data_after_mice
-df_health_exp_decile$govt_exp_decile <- ntile(data_after_mice$govt_health_exp, 10)
-df_health_exp_decile
-```
-```{r}
-df_gdp_decile <- df_health_exp_decile
-df_gdp_decile$gdp_decile <- ntile(df_health_exp_decile$GDP, 10)
-df_gdp_decile
+data_after_mice[data_after_mice$region == "East Asia & Pacific",]
+
 ```
 
 ```{r}
-df_by_group <- aggregate(govt_exp_decile ~ region + gdp_decile, data=df_gdp_decile, FUN=mean)
-df_by_group
-```
-```{r}
-names(df_by_group)[3] <- "govt_exp_by_group"
+data_after_mice[data_after_mice$region == "Europe & Central Asia",]
+
 ```
 
 ```{r}
-final_df <- merge(df_by_group,df_gdp_decile, by=c("region","gdp_decile"))
-final_df$govt_exp_by_group <- log(final_df$govt_exp_by_group)
+data_after_mice$spend_ratio <- data_after_mice$govt_health_transform/data_after_mice$private_health_transform
 ```
 
 ```{r}
-final_df
+ratio_lm <- lm(mmr_transform ~ region + spend_ratio + govt_health_transform + private_health_transform + gdp_transform + fertility_rate_transform + sab, data = data_after_mice)
+summary(ratio_lm)
 ```
 
 
 ```{r}
-p <- ggplot(final_df, aes(x=govt_exp_by_group, y=mmr_transform)) + 
-  geom_point(aes(colour=region)) +
-  geom_smooth(method=lm, se=F, colour="black")
+no_controls = subset(data_after_mice, select = -c(region, country, country_code))
 
-p + scale_color_brewer(palette = "Paired") + xlab("Log of mean Government Health Expenditure by region and GDP decile") + ylab("Log of MMR")
+vif_fun <- function(df, keep_in) {
+             # df: the dataset of interest
+             # keep_in: the variables that should be kept in  
+             highest <- c()
+             while(TRUE) {
+                # the rnorm() below is arbitrary as the VIF should not 
+                # depend on it
+                vifs <- vif(lm(rnorm(nrow(df)) ~. , data = df))
+                adj_vifs <- vifs[-which(names(vifs) %in% keep_in)]
+                if (max(adj_vifs) < 10) {
+                     break
+                }
+               highest <- c(highest,names((which(adj_vifs == max(adj_vifs)))))
+               cat("\n")
+               cat("removed:", highest)
+               cat("\n")
+               df <- df[,-which(names(df) %in% highest)]
+
+              }
+            cat("\n")
+            cat("final variables: \n")
+            return(names(vifs))
+              }
+
+vif_fun(no_controls,keep_in = c("gdp","fertility_rate","skilled_health_staff","mmr"))
 ```
 
 ```{r}
-groups_with_controls <- lm(mmr_transform ~ govt_exp_by_group + fertility_rate_transform + SAB + female_pop_transform + num_physicians, data = final_df)
-summary(groups_with_controls)
+vifLm <- lm(mmr_transform~region + govt_health_transform + private_health_transform + gdp_transform + fertility_rate_transform + sab, data = data_after_mice)
+plot(vifLm)
+
+dfNoOutliers <- data_after_mice[-c(49,74,19),]
+```
+```{r}
+no_outliers_lm <- lm(mmr_transform ~ region + govt_health_transform + private_health_transform + gdp_transform + fertility_rate_transform + sab, data = dfNoOutliers)
+
+summary(no_outliers_lm)
 ```
 
+```{r}
+ratio_lm <- lm(mmr_transform ~ region + spend_ratio + gpd_pc_transform + gdp_transform + rule_of_law + comp_educ + female_pop_transform + fertility_rate_transform + sab, data = dfAfterVIF)
+summary(ratio_lm)
+```
 
 ```{r}
-final_reg <- lm(mmr_transform ~ govt_health_exp + GDP + region + govt_exp_by_group + fertility_rate_transform + SAB + female_pop_transform + num_physicians, data = final_df)
-summary(final_reg)
+interaction_lm <- lm(mmr_transform ~ region + govt_health_transform + private_health_transform + gdp_transform + fertility_rate_transform + sab + region*govt_health_transform + region*private_health_transform, data = data_after_mice)
+summary(interaction_lm)
+```
+
+```{r}
+my.cols <- c("blue","orange")
+my.names <- c("USA", "EUU")
+names(my.cols) <- my.names
+
+mmr_time <- read.csv("mmr_time.csv")
+p <-  ggplot(mmr_time, aes(x = Year))
+
+for (i in 1:2){
+  p <- p + geom_line(aes_(y = as.name(names(mmr_time[i+1])), colour = 
+colnames(mmr_time[i+1])))
+}
+p + scale_colour_manual("", 
+                        breaks = as.character(my.names),
+                        values = my.cols) + labs(y= "Maternal Mortality Ratio")
+p
+```
+
+```{r}
+my.cols <- c("blue","orange")
+my.names <- c("USA", "EUU")
+names(my.cols) <- my.names
+
+govt_exp <- read.csv("govt_exp_time.csv")
+p <-  ggplot(govt_exp, aes(x = Year))
+
+for (i in 1:2){
+  p <- p + geom_line(aes_(y = as.name(names(govt_exp[i+1])), colour = 
+colnames(govt_exp[i+1])))
+}
+p + scale_colour_manual("", 
+                        breaks = as.character(my.names),
+                        values = my.cols) + labs(y= "Government Health Expenditure Per Capita (Current US $)")
+p
+```
+
+```{r}
+my.cols <- c("blue","orange")
+my.names <- c("USA", "EUU")
+names(my.cols) <- my.names
+
+priv_exp <- read.csv("private_exp_time.csv")
+p <-  ggplot(priv_exp, aes(x = Year))
+
+for (i in 1:2){
+  p <- p + geom_line(aes_(y = as.name(names(priv_exp[i+1])), colour = 
+colnames(priv_exp[i+1])))
+}
+p + scale_colour_manual("", 
+                        breaks = as.character(my.names),
+                        values = my.cols) + labs(y= "Private Health Expenditure Per Capita (Current US $)")
+p
 ```
