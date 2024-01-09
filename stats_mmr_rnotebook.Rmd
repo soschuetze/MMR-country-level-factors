@@ -39,14 +39,14 @@ data$region <- countrycode(sourcevar = countries,
 library(choroplethr)
 library(WDI) 
 
-choroplethr_wdi(code="SH.STA.MMRT", year=2018, title="2018 Maternal Mortality Ratio", num_colors=9)
+choroplethr_wdi(code="SH.STA.MMRT", year=2018, title="2018 Maternal Mortality Ratio", num_colors=1)
 ```
 ```{r}
-choroplethr_wdi(code="SP.DYN.TFRT.IN", year=2018, title="2018 Total Fertility Rate", num_colors=9)
+choroplethr_wdi(code="SP.DYN.TFRT.IN", year=2018, title="2018 Total Fertility Rate", num_colors=1)
 
 ```
 ```{r}
-choroplethr_wdi(code="SH.XPD.PVTD.PC.CD", year=2018, title="2018 Private Health Expenditure", num_colors=1)
+choroplethr_wdi(code="SH.XPD.PVTD.PC.CD", year=2018, title="2018 Private Health Expenditure", num_colors=9)
 ```
 
 
@@ -76,7 +76,7 @@ categorical <- subset(data_after_mice, select = c(region, country, country_code)
 non_categorical <- subset(data_after_mice, select = -c(region, country, country_code))
 res <- cor(non_categorical)
 corrplot(res, type = "upper", order = "hclust", 
-         tl.col = "black", tl.srt = 45)
+         tl.col = "black", tl.srt = 45,col = COL2('PuOr', 10))
 ```
 Remove variables that present multicollinearity
 ```{r}
@@ -254,25 +254,45 @@ summary(interaction_lm)
 ```
 
 ```{r}
-my.cols <- c("blue","orange")
-my.names <- c("USA", "EUU")
+my.cols <- c("#0a0a0a","#8087A3","#656191","#384c9c","#80808c","#edb880","#ed8618")
+my.names <- c("Germay","Poland","France","Italy","United.States","United.Kingdom","Greece")
 names(my.cols) <- my.names
 
 mmr_time <- read.csv("mmr_time.csv")
-p <-  ggplot(mmr_time, aes(x = Year))
-
-for (i in 1:2){
-  p <- p + geom_line(aes_(y = as.name(names(mmr_time[i+1])), colour = 
-colnames(mmr_time[i+1])))
-}
-p + scale_colour_manual("", 
-                        breaks = as.character(my.names),
-                        values = my.cols) + labs(y= "Maternal Mortality Ratio")
-p
+p <-  ggplot(mmr_time, aes(x = Time))
 ```
 
 ```{r}
-my.cols <- c("blue","orange")
+mmr_time
+```
+```{r}
+library("tidyverse")
+df <- mmr_time %>% 
+  rename(
+    USA = United.States,
+    UK = United.Kingdom
+    )
+
+df <- df %>%
+  select(Time, Germany, Poland, France,Italy,USA,UK,Greece) %>%
+  gather(key = "variable", value = "value", -Time)
+
+head(df)
+
+```
+
+
+```{r}
+ggplot(df, aes(x = Time, y = value)) + 
+  geom_line(aes(color = variable)) + 
+  scale_color_manual(labels=c("France","Germany","Greece","Italy","Poland","United.Kingdom","United.States"),values = c("#0a0a0a","#c8c8cc","#9f9dd1","#4d49b8","#f76902","#edb880","#ed8618")) +
+  theme_bw() +
+  labs(x = "Year", y = "MMR", color = "Country")
+```
+
+
+```{r}
+my.cols <- c("#0a0a0a","#8087A3","#656191","#384c9c","#80808c")
 my.names <- c("USA", "EUU")
 names(my.cols) <- my.names
 
