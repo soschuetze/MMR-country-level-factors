@@ -16,12 +16,11 @@ A study of the relationship between health expenditure and maternal mortality ra
 - naniar
 
 ## Folders and Files
-- Data: Contains all the csv files used to load and store data.
+Data: Contains all the csv files used to load and store data.
 1. Data.csv - main data file containing 218 country observations for the year 2018 and 14 explanatory variable columns.
 2. Mmr_time.csv, govt_exp_time.csv, and prviate_exp_time.csv are all subsets of the data used to create visualizations.
 
-- Images: Contains various visualizations relating to data exploration and model validation.
-
-- Stats_mmr_rnotebook.Rmd - main R notebook file to be used to run the entire project.
+Images: Contains various visualizations relating to data exploration and model validation.
+Stats_mmr_rnotebook.Rmd: main R notebook file to be used to run the entire project.
 
 
