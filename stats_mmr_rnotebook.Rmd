@@ -158,11 +158,13 @@ for (i in 1:ncol(transformed_noncat)){
 boxplot(transformed_noncat, use.cols = TRUE, las=2)
 ```
 
+Baseline model with just health expenditure and mmr
 ```{r}
 baseline <- lm(mmr_transform ~ govt_health_transform + private_health_transform, data = data_after_mice)
 summary(baseline)
 ```
 
+Baseline model with added region fixed effect.
 ```{r}
 baseline <- lm(mmr_transform ~ region + govt_health_transform + private_health_transform, data = data_after_mice)
 summary(baseline)
@@ -172,6 +174,7 @@ summary(baseline)
 data_after_mice
 ```
 
+Model including fixed effects shown important by prior literature.
 ```{r}
 baseline_contr_1 <- lm(mmr_transform ~ region + govt_health_transform + private_health_transform + gpd_pc_transform + gdp_transform + rule_of_law + comp_educ + female_pop_transform + fertility_rate_transform + sab, data = data_after_mice)
 summary(baseline_contr_1)
